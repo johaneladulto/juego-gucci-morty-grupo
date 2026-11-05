@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>Gucci Morty vs. las artes electrónicas</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#d9c4a0;font-family:Georgia,serif;color:#3b2a1a}
+canvas{display:block}
+.ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(60,40,20,.55);backdrop-filter:blur(3px);z-index:5}
+.card{background:#f1e4c8;border:3px double #7a5a34;padding:26px 34px;max-width:520px;box-shadow:0 10px 40px #0006;text-align:center}
+.card h1{margin:0 0 4px;font-size:25px}.card h2{margin:0 0 12px;font-size:14px;font-weight:normal;font-style:italic}
+.card p{font-size:14px;line-height:1.5;margin:7px 0}
+button{font:inherit;background:#7a5a34;color:#f6ead0;border:0;padding:10px 22px;margin:12px 4px 0;cursor:pointer;letter-spacing:1px}
+button:hover{background:#5c4020}
+#hud{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#fff9;box-shadow:0 0 0 1px #3b2a1a99;z-index:2;pointer-events:none}
+#prompt{position:fixed;left:50%;top:57%;transform:translateX(-50%);background:#f1e4cef0;border:1px solid #7a5a34;padding:6px 14px;font-size:14px;display:none;z-index:2;pointer-events:none}
+#vig{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(70,40,10,.4));z-index:1}
+#panel{display:none}#panel .card{max-height:86vh;overflow-y:auto;max-width:600px}#pb{text-align:left}#pb p{margin:6px 0;white-space:pre-line}
+.row{text-align:left;margin:6px 0;font-size:14px}.row b{color:#7a5a34}
+.ph{height:140px;margin:10px 0;display:flex;align-items:center;justify-content:center;border:2px dashed #7a5a34;font-size:13px;opacity:.8}
+#bk{display:flex;flex-direction:column;align-items:center}
+.book{display:flex;width:min(940px,94vw);height:min(500px,74vh);background:#f1e4c8;border:3px solid #5c4020;border-radius:6px;box-shadow:0 14px 50px #000a}
+.pg{flex:1;padding:26px 34px 34px;overflow-y:auto;font-size:15px;line-height:1.55;position:relative}
+.pg+.pg{border-left:1px solid #b79c6c;box-shadow:inset 16px 0 18px -14px rgba(60,40,20,.5)}
+.pg h1{font-size:25px;margin:0 0 8px}.pg h3{margin:0 0 12px;font-size:19px;border-bottom:1px solid #b79c6c;padding-bottom:6px}.pg p{margin:8px 0}
+.pg .n{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:12px;opacity:.6}
+.pg kbd{background:#e2cfa5;border:1px solid #7a5a34;border-radius:3px;padding:0 6px;font-size:13px}
+.flip{animation:fl .35s}@keyframes fl{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
+.nav{margin-top:10px;display:flex;align-items:center}.nav span{color:#f6ead0;margin:12px 10px 0;min-width:44px;text-align:center}
+</style></head><body>
+<div id="vig"></div><div id="hud"></div><div id="prompt"></div>
+<div class="ov" id="intro"><div id="bk"><div class="book"><div class="pg" id="pl"></div><div class="pg" id="pr"></div></div>
+<div class="nav"><button id="pv">◀ Anterior</button><span id="pn"></span><button id="nx">Siguiente ▶</button><button id="go">Entrar</button></div></div></div>
+<div class="ov" id="panel"><div class="card" style="min-width:380px">
+<h1 id="pt"></h1><h2 id="ps"></h2><img id="pi" style="max-width:100%;max-height:200px;margin:8px 0"><div id="pb"></div>
+<button id="dice">🎲 Otro meme</button><button id="close">Volver (E)</button></div></div>
+<script src="lib/three.min.js"></script>
+<script src="memes.js"></script>
+<script>
+(function(){
+/* ====== CONFIGURACIÓN (editen aquí) ====== */
+const FIXED=[0,1,2,3,9,11,12]; // memes fijos en los cuadros de afuera (índices de memes.js)
+const ROTATE_SECONDS=0; // >0: cada tanto un cuadro fijo cambia a otro meme
+const STEP_RATE=1.4, STEP_RATE_RUN=1.9, WALK=3.4, RUN=6;
+/* ========================================= */
+const SZ=16,H=3,LAP=12,TH=1.4,WT=.7,CH=LAP-TH,R=n=>Math.random()*n|0;
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
+renderer.outputEncoding=THREE.sRGBEncoding;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene=new THREE.Scene(),FOG=0xd9c4a0;scene.background=new THREE.Color(FOG);scene.fog=new THREE.FogExp2(FOG,.026);
+const cam=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.1,300);cam.rotation.order='YXZ';
+
+/* luces */
+scene.add(new THREE.HemisphereLight(0xfff0d0,0x8a6a48,.95));
+const sun=new THREE.DirectionalLight(0xffe0b0,1.25);sun.position.set(60,100,35);sun.target.position.set(0,10,0);
+sun.castShadow=true;sun.shadow.mapSize.set(4096,4096);const sc=sun.shadow.camera;sc.left=sc.bottom=-80;sc.right=sc.top=80;sc.near=1;sc.far=300;
+sun.shadow.bias=-.0004;sun.shadow.normalBias=.04;scene.add(sun,sun.target);
+const lantern=new THREE.PointLight(0xffd9a0,.6,16);scene.add(lantern);
+
+/* texturas procedurales */
+function tex(base,fn,rep){const c=document.createElement('canvas');c.width=c.height=256;const g=c.getContext('2d');g.fillStyle=base;g.fillRect(0,0,256,256);
+ for(let i=0;i<1800;i++){g.fillStyle=`rgba(${R(60)},${R(40)},${R(20)},${Math.random()*.07})`;g.fillRect(Math.random()*256,Math.random()*256,R(14)+2,R(10)+2)}
+ fn&&fn(g);const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rep,rep);t.encoding=THREE.sRGBEncoding;t.anisotropy=4;return t}
+const blocks=g=>{g.strokeStyle='rgba(80,50,20,.35)';g.lineWidth=2;for(let y=0;y<256;y+=64){g.beginPath();g.moveTo(0,y);g.lineTo(256,y);g.stroke();for(let x=(y/64%2)*64;x<256;x+=128){g.beginPath();g.moveTo(x,y);g.lineTo(x,y+64);g.stroke()}}};
+const tiles=g=>{g.strokeStyle='rgba(60,30,10,.5)';g.lineWidth=3;for(let i=0;i<=256;i+=64){g.beginPath();g.moveTo(i,0);g.lineTo(i,256);g.moveTo(0,i);g.lineTo(256,i);g.stroke()}};
+const wallTex=tex('#e6d2ac',blocks,.18),tileTex=tex('#b9704a',tiles,.25);
+const wallMats=[0xf0d9b0,0xe6b99a,0xe4cf9e,0xd6b58a].map(c=>new THREE.MeshStandardMaterial({map:wallTex,color:c,roughness:.95}));
+const tileMat=new THREE.MeshStandardMaterial({map:tileTex,color:0xffe0c0,roughness:.85});
+const woodMat=new THREE.MeshStandardMaterial({color:0x6b4a2b,roughness:.8});
+
+/* ====== una vuelta de la galería (4 lados con escaleras + 4 descansos) ====== */
+const CORN=[[-SZ,-SZ,0],[SZ,-SZ,-Math.PI/2],[SZ,SZ,Math.PI],[-SZ,SZ,Math.PI/2]];
+const DIR=[[1,0],[0,1],[-1,0],[0,-1]],INW=[[0,1],[-1,0],[0,-1],[1,0]];
+const ARCH=j=>2.5+27*(j+.5)/4;
+const lap=new THREE.Group();
+function ext(shape,depth,z,mat){const g=new THREE.ExtrudeGeometry(shape,{depth,bevelEnabled:false});g.translate(0,0,z);const m=new THREE.Mesh(g,mat);m.castShadow=m.receiveShadow=true;return m}
+function box(w,h,d,x,y,z,mat){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.castShadow=m.receiveShadow=true;return m}
+for(let i=0;i<4;i++){
+ const g=new THREE.Group(),[cx,cz,th]=CORN[i],b=H*i,s0=2.5,s1=29.5;g.position.set(cx,0,cz);g.rotation.y=th;
+ // cubierta con escalones reales (12 por lado)
+ const d=new THREE.Shape();d.moveTo(s0,b-TH);d.lineTo(s1,b+H-TH);d.lineTo(s1,b+2.75);
+ for(let n=11;n>=0;n--){d.lineTo(s0+n*2.25,b+.25*n);if(n)d.lineTo(s0+n*2.25,b+.25*(n-1))}
+ g.add(ext(d,5,-2.5,[wallMats[i],tileMat]));
+ // descanso de la esquina + muros exteriores de la esquina
+ g.add(box(5,TH,5,0,b-TH/2,0,tileMat),box(5,CH,WT,0,b+CH/2,-2.15,wallMats[i]),box(WT,CH,5,-2.15,b+CH/2,0,wallMats[i]));
+ // muros con arcos (exterior e interior)
+ const w=new THREE.Shape();w.moveTo(s0,b-.5);w.lineTo(s1,b+H-.5);w.lineTo(s1,b+H+CH);w.lineTo(s0,b+CH);
+ for(let j=0;j<4;j++){const c=ARCH(j),y0=b+(c-2.5)/9+1,p=new THREE.Path();
+  p.moveTo(c-2,y0);p.lineTo(c+2,y0);p.lineTo(c+2,y0+6.4);p.absarc(c,y0+6.4,2,0,Math.PI,false);p.lineTo(c-2,y0);w.holes.push(p)}
+ g.add(ext(w,WT+.04,-2.52,wallMats[i]),ext(w,WT+.04,1.78,wallMats[i]));
+ lap.add(g)}
+const KS=[-2,-1,0,1,2,3],structMeshes=[];
+KS.forEach(k=>{const c=lap.clone();c.position.y=LAP*k;scene.add(c);c.traverse(o=>o.isMesh&&structMeshes.push(o))});
+
+
+/* ====== cuadros de memes ====== */
+const anims=[];
+function drawIm(g,gr,im){g.fillStyle=gr;g.fillRect(0,0,512,512);const k=Math.min(512/im.width,512/im.height);g.drawImage(im,(512-im.width*k)/2,(512-im.height*k)/2,im.width*k,im.height*k)}
+function paint(c,m,t){const g=c.getContext('2d'),gr=g.createLinearGradient(0,0,512,512);gr.addColorStop(0,m.c);gr.addColorStop(1,'#3b2a1a');
+ g.fillStyle=gr;g.fillRect(0,0,512,512);g.fillStyle='#f6ead0';g.textAlign='center';g.font='bold 40px Georgia';g.fillText(m.n.slice(0,22),256,270);t.needsUpdate=true;
+ const o=anims.findIndex(a=>a.c===c);if(o>=0)anims.splice(o,1);
+ if(m.frames)anims.push({c,t,gr,i:0,ims:m.frames.map(s=>{const im=new Image();im.src=s;return im})});
+ else if(m.img){const im=new Image();im.onload=()=>{drawIm(g,gr,im);t.needsUpdate=true};im.src=m.img}}
+function memeTex(m){const c=document.createElement('canvas');c.width=c.height=512;const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;paint(c,m,t);return{c,t}}
+const bc=document.createElement('canvas');bc.width=bc.height=64;{const g=bc.getContext('2d');g.fillStyle='#e0b34a';g.beginPath();g.arc(32,32,30,0,7);g.fill();g.fillStyle='#3b2a1a';g.font='bold 34px Georgia';g.textAlign='center';g.fillText('E',32,44)}
+const btnTex=new THREE.CanvasTexture(bc);btnTex.encoding=THREE.sRGBEncoding;
+const hits=[],floaters=[];
+function frame(w,h,tex,id,x,y,z){const f=new THREE.Group(),bd=new THREE.Mesh(new THREE.BoxGeometry(w+.5,h+.5,.2),woodMat);f.add(bd);
+ const pic=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:tex}));pic.position.z=.11;
+ const btn=new THREE.Mesh(new THREE.CircleGeometry(.3,24),new THREE.MeshBasicMaterial({map:btnTex}));btn.position.set(0,-h/2-.8,.11);
+ pic.userData.id=btn.userData.id=id;f.add(pic,btn);hits.push(pic,btn);f.position.set(x,y,z);scene.add(f);floaters.push({f,y,ph:x+z})}
+const slot=FIXED.slice(),small=slot.map(i=>memeTex(MEMES[i])),big=memeTex(MEMES[13]);let cur=13; // Gucci Morty siempre arranca en el centro
+const FP=[[0,1],[0,3],[1,2],[2,0],[2,2],[3,1],[3,3]];
+KS.forEach(k=>{
+ FP.forEach(([si,j],n)=>{const s=ARCH(j),[cx,cz]=CORN[si],x=cx+DIR[si][0]*s+-INW[si][0]*5.3,z=cz+DIR[si][1]*s+-INW[si][1]*5.3;
+  frame(2.6,2.6,small[n].t,n,x,H*si+(s-2.5)/9+2.7+LAP*k,z)});
+ frame(7,7,big.t,'r',0,8+LAP*k,0)});
+function roll(){let n;do n=R(MEMES.length);while(n===cur&&MEMES.length>1);cur=n;paint(big.c,MEMES[n],big.t)}
+
+/* partículas de polvo (periódicas) */
+const pp=[];for(let k=-3;k<4;k++)for(let i=0;i<120;i++)pp.push((Math.random()-.5)*26,Math.random()*LAP+LAP*k,(Math.random()-.5)*26);
+const dg=new THREE.BufferGeometry();dg.setAttribute('position',new THREE.Float32BufferAttribute(pp,3));
+const dust=new THREE.Points(dg,new THREE.PointsMaterial({color:0xfff0c8,size:.12,transparent:true,opacity:.7}));scene.add(dust);
+
+/* ====== jugador ====== */
+let yaw=-Math.PI/2,pitch=0,px=-15.5,pz=-16,py=0,locked=false,started=false,panelOpen=false,moving=false,target=null,bob=0,vy=0,grounded=true,cy=0;
+const keys={};
+function ground(x,z,y){let i,s;
+ if(Math.abs(z)>=Math.abs(x)){if(z<0){i=0;s=x+SZ}else{i=2;s=SZ-x}}else{if(x>0){i=1;s=z+SZ}else{i=3;s=SZ-z}}
+ s=Math.min(32,Math.max(0,s));const n=Math.min(12,Math.floor(Math.max(0,s-2.5)/2.25)),h=H*i+.25*n;return h+LAP*Math.round((y-h)/LAP)}
+const steps=new Audio('assets/pasos.mp3');steps.loop=true;
+const $=id=>document.getElementById(id),dom=renderer.domElement,ray=new THREE.Raycaster();
+function update(dt,t){
+ const f=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0),r=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0);moving=false;
+ if(locked&&(f||r)){const sp=(keys.ShiftLeft||keys.ShiftRight?RUN:WALK)*dt,l=Math.hypot(f,r);
+  px+=(-Math.sin(yaw)*f+Math.cos(yaw)*r)/l*sp;pz+=(-Math.cos(yaw)*f-Math.sin(yaw)*r)/l*sp;moving=true}
+ const d=Math.max(Math.abs(px),Math.abs(pz));if(d>17.45){px*=17.45/d;pz*=17.45/d}else if(d<14.55){px*=14.55/d;pz*=14.55/d}
+ const g=ground(px,pz,py);if(locked&&keys.Space&&grounded){vy=7.5;grounded=false}
+ if(!grounded){vy-=24*dt;py+=vy*dt;if(vy<=0&&py<=g){py=g;vy=0;grounded=true}}else if(py-g>.45){grounded=false;vy=0}else py=g;
+ if(py>=LAP){py-=LAP;cy-=LAP}else if(py<0){py+=LAP;cy+=LAP}
+ cy+=(py-cy)*Math.min(1,dt*(grounded?8:14));   // el truco: salto invisible de una vuelta
+ if(moving)bob+=dt*(keys.ShiftLeft?11:7.5);
+ cam.position.set(px,cy+1.7+(moving?Math.sin(bob)*.035:0),pz);cam.rotation.set(pitch,yaw,0);lantern.position.copy(cam.position);
+ if(moving&&grounded){steps.playbackRate=keys.ShiftLeft?STEP_RATE_RUN:STEP_RATE;if(steps.paused)steps.play().catch(()=>{})}else if(!steps.paused)steps.pause();
+ floaters.forEach(o=>{o.f.position.y=o.y+Math.sin(t*.9+o.ph)*.2;o.f.rotation.y=Math.atan2(cam.position.x-o.f.position.x,cam.position.z-o.f.position.z)});
+ dust.rotation.y=t*.02;dust.position.y=(t*.25)%LAP;
+}
+let rayT=0;function pick(t){if(t-rayT<.1)return;rayT=t;target=null;if(!locked)return;
+ ray.setFromCamera({x:0,y:0},cam);ray.far=24;const h=ray.intersectObjects(hits.concat(structMeshes),false)[0];
+ if(h&&h.object.userData.id!==undefined)target=h.object.userData.id;
+ const p=$('prompt');if(target===null)p.style.display='none';else{p.style.display='block';p.textContent='[E] / clic — '+(target==='r'?'Meme aleatorio (cuadro central)':MEMES[target==='r'?cur:slot[target]].n)}}
+function fill(m){$('pt').textContent=m.n+(m.anio?' ('+m.anio+')':'');$('ps').textContent=m.es||'';const pi=$('pi');pi.style.display=m.img?'inline-block':'none';if(m.img)pi.src=m.img;
+ $('pb').innerHTML=m.secs.map(([a,b])=>'<p><b>'+a+':</b> '+b.replace(/</g,'&lt;')+'</p>').join('')+'<p><b>Conexión con las artes electrónicas:</b> '+(m.conexion||'[por completar]')+'</p>'}
+function openPanel(id){panelOpen=true;fill(id==='r'?MEMES[cur]:MEMES[slot[id]]);
+ $('dice').style.display=id==='r'?'inline-block':'none';$('panel').style.display='flex';$('prompt').style.display='none';document.exitPointerLock()}
+function closePanel(relock){panelOpen=false;$('panel').style.display='none';if(relock)dom.requestPointerLock()}
+$('go').onclick=()=>{started=true;$('intro').style.display='none';dom.requestPointerLock();steps.play().then(()=>steps.pause()).catch(()=>{})};
+const PAGES=[
+`<h1>Gucci Morty vs. las artes electrónicas</h1><p><i>Manual de la galería</i></p><p>Bienvenido a una torre que sube… y sube… y nunca termina. Aquí los memes se exponen como obras de arte y tú los recorres caminando, en primera persona.</p><p>Pasa las páginas con <kbd>◀</kbd> <kbd>▶</kbd> (o las flechas del teclado) para aprender cómo se juega y cómo funciona todo.</p>`,
+`<h3>Cómo jugar</h3><p><kbd>W A S D</kbd> o flechas: caminar</p><p><kbd>Mouse</kbd>: mirar a tu alrededor</p><p><kbd>Shift</kbd>: correr</p><p><kbd>Espacio</kbd>: saltar</p><p><kbd>E</kbd> o <b>clic</b>: interactuar con el cuadro que tienes en la mira</p><p><kbd>Esc</kbd>: pausa y volver a este manual</p><p>Haz clic en <b>Entrar</b> para capturar el mouse y empezar.</p>`,
+`<h3>Cómo funciona el mundo</h3><p>La galería es una torre cuadrada de pasillos con arcos. Cada lado tiene 12 escalones y sube 3 metros, así que una vuelta completa sube 12.</p><p>Al terminar la vuelta, el juego te baja 12 metros sin que lo notes, porque todo se repite exactamente igual cada 12 metros. Por eso siempre subes y nunca llegas: es la escalera infinita de Escher.</p><p>Solo puedes caminar por los pasillos; el resto es para mirar.</p>`,
+`<h3>Los cuadros de memes</h3><p>Afuera de la torre flotan 7 cuadros con memes, visibles a través de las ventanas. Tienen un botoncito dorado con una <b>E</b> debajo.</p><p>Apúntalos con la mira (el punto del centro) y pulsa <kbd>E</kbd> o haz clic. Se abre una ficha con la imagen del meme, su origen, su significado, su contexto y su conexión con las artes electrónicas.</p><p>Cierra la ficha con <kbd>E</kbd> o con el botón <b>Volver</b>.</p>`,
+`<h3>El randomizer</h3><p>En el centro de la torre hay un cuadro grande que flota. Siempre empieza mostrando a <b>Gucci Morty</b>.</p><p>Al abrir su ficha aparece el botón <b>🎲 Otro meme</b>: sortea entre los 14 memes de la galería, incluidos los que no están en los cuadros de afuera.</p><p>Algunos se mueven, como el Rickroll.</p>`,
+`<h3>Consejos</h3><p>• Mira por los arcos hacia arriba y abajo: verás la torre repetirse sin fin.</p><p>• Si no puedes abrir un cuadro, acércate un poco y apunta al centro de la imagen.</p><p>• Las escaleras tienen escalones reales; al subir, la cámara se suaviza para que no se sienta brusco.</p><p>• Mientras lees una ficha, el juego queda en pausa.</p>`,
+`<h3>Créditos</h3><p><b>Estudiantes</b></p><p>Tomas Elías Hernández Galván<br>Yohan Arias Martinez<br>Juan Diego Cossio Palacios<br>Juan Diego Enciso Alvaréz</p>`,
+`<h3>Fuentes</h3><p>Memeverso<br>«Subiendo y bajando» de Escher<br>Know Your Meme<br>Claude (Anthropic)<br>Reddit<br>Wikipedia</p><p><i>Mundo inspirado en «Ascending and Descending» (Escher).</i></p>`];let sp=0;
+function book(){const N=PAGES.length/2;$('pl').innerHTML=PAGES[sp*2]+'<div class="n">'+(sp*2+1)+'</div>';$('pr').innerHTML=PAGES[sp*2+1]+'<div class="n">'+(sp*2+2)+'</div>';$('pn').textContent=(sp+1)+' / '+N;
+ ['pl','pr'].forEach(k=>{const e=$(k);e.classList.remove('flip');void e.offsetWidth;e.classList.add('flip')});$('pv').style.visibility=sp?'visible':'hidden';$('nx').style.visibility=sp<N-1?'visible':'hidden'}
+$('pv').onclick=()=>{if(sp>0){sp--;book()}};$('nx').onclick=()=>{if(sp<PAGES.length/2-1){sp++;book()}};book();
+$('close').onclick=()=>closePanel(true);
+$('dice').onclick=()=>{roll();fill(MEMES[cur]);$('panel').firstChild.scrollTop=0};
+if(ROTATE_SECONDS>0)setInterval(()=>{const n=R(slot.length);let m;do m=R(MEMES.length);while(slot.includes(m)||m===cur);slot[n]=m;paint(small[n].c,MEMES[m],small[n].t)},ROTATE_SECONDS*1000);
+document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===dom;
+ if(!locked&&started&&!panelOpen){$('intro').style.display='flex';$('go').textContent='Continuar'}});
+document.addEventListener('mousemove',e=>{if(!locked)return;yaw-=e.movementX*.0022;pitch=Math.max(-1.4,Math.min(1.4,pitch-e.movementY*.0022))});
+addEventListener('keydown',e=>{keys[e.code]=true;if($('intro').style.display!=='none'){if(e.code==='ArrowRight')$('nx').click();if(e.code==='ArrowLeft')$('pv').click()}
+ if(e.code==='KeyE'){if(panelOpen)closePanel(true);else if(locked&&target!==null)openPanel(target)}
+ else if(e.code==='Escape'&&panelOpen)closePanel(false)});
+addEventListener('keyup',e=>keys[e.code]=false);
+dom.addEventListener('click',()=>{if(locked&&target!==null)openPanel(target)});
+addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+const clock=new THREE.Clock();
+(function loop(){requestAnimationFrame(loop);const dt=Math.min(.05,clock.getDelta()),t=clock.elapsedTime;update(dt,t);pick(t);if(t-(window._at||0)>.1){window._at=t;anims.forEach(a=>{const im=a.ims[a.i=(a.i+1)%a.ims.length];if(im.complete&&im.naturalWidth){drawIm(a.c.getContext('2d'),a.gr,im);a.t.needsUpdate=true}})}renderer.render(scene,cam)})();
+})();
+</script></body></html>
